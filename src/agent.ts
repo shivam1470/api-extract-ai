@@ -227,8 +227,15 @@ class AIAgent {
         allApis.push(...apis);
       } catch (error: any) {
         onLog(`Error analyzing chunk ${i + 1}: ${error.message}`);
-        // If it's a quota error, we throw it to be caught by the server and sent to client
-        if (error.message.includes('429') || error.message.toLowerCase().includes('quota')) {
+        // Quota / rate limit: surface to client via SSE instead of silently continuing
+        const msg = String(error?.message ?? error).toLowerCase();
+        if (
+          msg.includes('429') ||
+          msg.includes('quota') ||
+          msg.includes('rate') ||
+          msg.includes('resource exhausted') ||
+          msg.includes('too many requests')
+        ) {
           throw error;
         }
       }

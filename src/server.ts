@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import type { ServerResponse } from 'http';
 import { AIAgent } from './agent.js';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -26,26 +27,45 @@ app.get('/api/extract', async (req, res) => {
     return res.status(400).json({ error: 'URL is required' });
   }
 
-  // Set headers for SSE
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  const sendLog = (message: string) => {
-    res.write(`data: ${JSON.stringify({ type: 'log', message })}\n\n`);
+  const writeSse = (payload: Record<string, unknown>) => {
+    if (res.writableEnded) return;
+    try {
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch {
+      // Client disconnected or response closed (e.g. Vercel timeout)
+    }
   };
 
+  const sendLog = (message: string) => {
+    writeSse({ type: 'log', message });
+  };
+
+  try {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    (res as ServerResponse).flushHeaders?.();
+  } catch {
+    return;
+  }
+
   const agent = new AIAgent(Math.random().toString(36).substring(7));
-  
+
   try {
     const apis = await agent.run(repoUrl, sendLog, modelId, customApiKey);
-    res.write(`data: ${JSON.stringify({ type: 'result', data: apis })}\n\n`);
-  } catch (error: any) {
-    res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+    writeSse({ type: 'result', data: apis });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    writeSse({ type: 'error', message });
   } finally {
-    res.write('event: close\ndata: close\n\n');
-    res.end();
+    if (!res.writableEnded) {
+      try {
+        res.write('event: close\ndata: close\n\n');
+        res.end();
+      } catch {
+        /* ignore */
+      }
+    }
   }
 });
 

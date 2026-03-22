@@ -23,7 +23,6 @@
     },
     {
       "src": "/(.*)",
-      "status": 404,
       "dest": "client/dist/index.html"
     }
   ]

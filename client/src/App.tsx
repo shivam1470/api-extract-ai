@@ -18,7 +18,9 @@ const MODELS = [
 
 const App: React.FC = () => {
   const [repoUrl, setRepoUrl] = useState('');
-  const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
+  const [selectedModel, setSelectedModel] = useState(
+    MODELS[0]?.id ?? 'gemini-3-flash-preview',
+  );
   const [customApiKey, setCustomApiKey] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
   const [apis, setApis] = useState<ApiEndpoint[]>([]);
@@ -74,6 +76,15 @@ const App: React.FC = () => {
     eventSource.onerror = () => {
       eventSource.close();
       setIsExtracting(false);
+      setExtractionCompleted(true);
+      setError((prev) => {
+        if (prev) return prev;
+        return 'Connection lost (timeout, rate limit, or network). If you hit API limits, wait or add a key; on Vercel, long runs may need a higher function duration.';
+      });
+      setLogs((prev) => {
+        if (prev.some((l) => l.startsWith('ERROR:'))) return prev;
+        return [...prev, 'ERROR: Connection to server ended unexpectedly.'];
+      });
     };
   };
 
