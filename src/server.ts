@@ -57,6 +57,11 @@ app.get('/:path(.*)', (req, res) => {
 });
 */
 
-app.listen(port, host, () => {
-  console.log(`Server is running on http://${host}:${port}`);
-});
+// Vercel invokes the Express app as a serverless handler; do not bind a port there.
+if (!process.env.VERCEL) {
+  app.listen(port, host, () => {
+    console.log(`Server is running on http://${host}:${port}`);
+  });
+}
+
+export default app;

@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import AdmZip from "adm-zip";
 import * as fs from "fs";
 import * as path from "path";
 import { simpleGit } from "simple-git";
@@ -64,10 +65,84 @@ class AIAgent {
     return apis;
   }
 
+  private parseGithubRepo(url: string): { owner: string; repo: string } | null {
+    try {
+      const u = new URL(url.trim().replace(/\.git$/, ""));
+      if (!u.hostname.includes("github.com")) return null;
+      const parts = u.pathname.split("/").filter(Boolean);
+      if (parts.length < 2) return null;
+      return { owner: parts[0], repo: parts[1] };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Download repo via GitHub zipball — avoids requiring a system `git` install. */
+  private async cloneGithubArchive(githubUrl: string) {
+    const parsed = this.parseGithubRepo(githubUrl);
+    if (!parsed) {
+      throw new Error("Invalid GitHub repository URL.");
+    }
+    const { owner, repo } = parsed;
+
+    let defaultBranch = "main";
+    try {
+      const metaRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+        headers: { Accept: "application/vnd.github+json" },
+      });
+      if (metaRes.ok) {
+        const meta = (await metaRes.json()) as { default_branch?: string };
+        if (meta.default_branch) defaultBranch = meta.default_branch;
+      }
+    } catch {
+      // fall back to main
+    }
+
+    const zipUrl = `https://codeload.github.com/${owner}/${repo}/zip/refs/heads/${defaultBranch}`;
+    const res = await fetch(zipUrl);
+    if (!res.ok) {
+      const fallbackUrl = `https://codeload.github.com/${owner}/${repo}/zip/refs/heads/master`;
+      const res2 = await fetch(fallbackUrl);
+      if (!res2.ok) {
+        throw new Error(`Could not download repository archive (${res.status}).`);
+      }
+      await this.extractZipToRepoPath(await res2.arrayBuffer());
+      return;
+    }
+    await this.extractZipToRepoPath(await res.arrayBuffer());
+  }
+
+  private extractZipToRepoPath(arrayBuffer: ArrayBuffer) {
+    if (fs.existsSync(this.repoPath)) {
+      fs.rmSync(this.repoPath, { recursive: true, force: true });
+    }
+    const zip = new AdmZip(Buffer.from(arrayBuffer));
+    const staging = `${this.repoPath}_staging`;
+    if (fs.existsSync(staging)) {
+      fs.rmSync(staging, { recursive: true, force: true });
+    }
+    fs.mkdirSync(staging, { recursive: true });
+    zip.extractAllTo(staging, true);
+    const entries = fs.readdirSync(staging);
+    if (entries.length !== 1) {
+      fs.rmSync(staging, { recursive: true, force: true });
+      throw new Error("Unexpected archive layout.");
+    }
+    fs.renameSync(path.join(staging, entries[0]), this.repoPath);
+    fs.rmSync(staging, { recursive: true, force: true });
+  }
+
   private async cloneRepo(url: string) {
     if (fs.existsSync(this.repoPath)) {
       fs.rmSync(this.repoPath, { recursive: true, force: true });
     }
+
+    // GitHub: always use HTTP zip (no `git` binary — works on Vercel, Docker, minimal machines).
+    if (this.parseGithubRepo(url)) {
+      await this.cloneGithubArchive(url);
+      return;
+    }
+
     await simpleGit().clone(url, this.repoPath, ["--depth", "1"]);
   }
 
