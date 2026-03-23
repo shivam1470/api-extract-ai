@@ -18,10 +18,20 @@ app.use(express.json());
 // Serve static files from the React app
 app.use(express.static(path.join(__dirname, '../client/dist')));
 
-app.get('/api/extract', async (req, res) => {
+// Vercel route mapping can change how Express sees `req.path`.
+// Accept both the public route (`/api/extract`) and the function-internal path (`/extract`).
+app.get(['/api/extract', '/extract'], async (req, res) => {
   const repoUrl = req.query.url as string;
   const modelId = (req.query.model as string) || 'gemini-3-flash-preview';
   const customApiKey = req.query.apiKey as string;
+
+  console.log('API extract hit', {
+    path: req.path,
+    originalUrl: req.originalUrl,
+    hasRepoUrl: Boolean(repoUrl),
+    modelId,
+    onVercel: Boolean(process.env.VERCEL),
+  });
 
   if (!repoUrl) {
     return res.status(400).json({ error: 'URL is required' });

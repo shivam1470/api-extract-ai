@@ -6,6 +6,10 @@
       "use": "@vercel/node"
     },
     {
+      "src": "src/api/extract.ts",
+      "use": "@vercel/node"
+    },
+    {
       "src": "client/package.json",
       "use": "@vercel/static-build",
       "config": { "distDir": "dist" }
@@ -13,8 +17,16 @@
   ],
   "routes": [
     {
+      "src": "/api/extract",
+      "dest": "src/api/extract.ts"
+    },
+    {
+      "src": "/api/extract/(.*)",
+      "dest": "src/api/extract.ts"
+    },
+    {
       "src": "/api/(.*)",
-      "dest": "src/server.ts"
+      "dest": "src/api/extract.ts"
     },
     {
       "src": "/(.*)",
