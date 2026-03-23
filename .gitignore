@@ -11,6 +11,14 @@ dist/
 client/dist/
 .next/
 .turbo/
+client/src/*.js
+client/src/*.js.map
+client/src/*.d.ts
+client/src/*.d.ts.map
+client/vite.config.js
+client/vite.config.js.map
+client/vite.config.d.ts
+client/vite.config.d.ts.map
 
 # Temporary files
 temp_repo_*

@@ -18,8 +18,8 @@ app.use(express.json());
 // Serve static files from the React app
 app.use(express.static(path.join(__dirname, '../client/dist')));
 
-// Vercel route mapping can change how Express sees `req.path`.
-// Accept both the public route (`/api/extract`) and the function-internal path (`/extract`).
+// Handles the extraction request lifecycle and streams progress/result events over SSE.
+// Supports both the public route and Vercel's internal remapped path.
 app.get(['/api/extract', '/extract'], async (req, res) => {
   const repoUrl = req.query.url as string;
   const modelId = (req.query.model as string) || 'gemini-3-flash-preview';
@@ -37,6 +37,7 @@ app.get(['/api/extract', '/extract'], async (req, res) => {
     return res.status(400).json({ error: 'URL is required' });
   }
 
+  // Serializes a JSON payload into one SSE message for the connected browser.
   const writeSse = (payload: Record<string, unknown>) => {
     if (res.writableEnded) return;
     try {
@@ -46,6 +47,7 @@ app.get(['/api/extract', '/extract'], async (req, res) => {
     }
   };
 
+  // Adapts plain log messages into the shared SSE event format.
   const sendLog = (message: string) => {
     writeSse({ type: 'log', message });
   };

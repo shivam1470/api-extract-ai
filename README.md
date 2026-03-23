@@ -59,3 +59,7 @@ The agent will generate a file named `extracted_apis.json` in the project root w
 
 ## How it works
 The agent uses a chunking strategy to send source code files to the LLM. It identifies key patterns like Express.js route registrations and Sequelize models to infer both manual and automatically generated (via `finale-rest`) endpoints.
+
+## Deployment
+
+This repo is now aligned for static frontend hosting plus a Node backend without Vercel-specific configuration. If you deploy on Netlify, configure the frontend from `client/` and deploy the backend separately if you need the extraction API.

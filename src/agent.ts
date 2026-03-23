@@ -39,6 +39,7 @@ class AIAgent {
     this.repoPath = path.join(os.tmpdir(), `api_extract_ai_${sessionId}`);
   }
 
+  // Orchestrates one extraction session from repository download through final API list.
   async run(githubUrl: string, onLog: (msg: string) => void, modelId: string = "gemini-3-flash-preview", customApiKey?: string) {
     const apiKey = customApiKey || DEFAULT_API_KEY;
     
@@ -65,6 +66,7 @@ class AIAgent {
     return apis;
   }
 
+  // Validates a GitHub URL and extracts the owner/repository names when possible.
   private parseGithubRepo(url: string): { owner: string; repo: string } | null {
     try {
       const u = new URL(url.trim().replace(/\.git$/, ""));
@@ -77,7 +79,7 @@ class AIAgent {
     }
   }
 
-  /** Download repo via GitHub zipball — avoids requiring a system `git` install. */
+  // Downloads a GitHub repository archive after resolving its default branch.
   private async cloneGithubArchive(githubUrl: string) {
     const parsed = this.parseGithubRepo(githubUrl);
     if (!parsed) {
@@ -112,6 +114,7 @@ class AIAgent {
     await this.extractZipToRepoPath(await res.arrayBuffer());
   }
 
+  // Unpacks the downloaded archive into the agent's temporary working directory.
   private extractZipToRepoPath(arrayBuffer: ArrayBuffer) {
     if (fs.existsSync(this.repoPath)) {
       fs.rmSync(this.repoPath, { recursive: true, force: true });
@@ -132,6 +135,7 @@ class AIAgent {
     fs.rmSync(staging, { recursive: true, force: true });
   }
 
+  // Chooses the repository retrieval strategy based on whether the source is GitHub.
   private async cloneRepo(url: string) {
     if (fs.existsSync(this.repoPath)) {
       fs.rmSync(this.repoPath, { recursive: true, force: true });
@@ -146,6 +150,7 @@ class AIAgent {
     await simpleGit().clone(url, this.repoPath, ["--depth", "1"]);
   }
 
+  // Recursively collects source files that are likely to define or support APIs.
   private scanFiles(dir: string, fileList: string[] = []): string[] {
     const files = fs.readdirSync(dir);
     for (const file of files) {
@@ -184,6 +189,7 @@ class AIAgent {
     return fileList;
   }
 
+  // Sends file chunks to Gemini and aggregates the extracted endpoint definitions.
   private async analyzeFiles(files: string[], onLog: (msg: string) => void, ai: any, modelId: string): Promise<ApiEndpoint[]> {
     const allApis: ApiEndpoint[] = [];
     const chunks = this.chunkFiles(files, 30);
@@ -244,6 +250,7 @@ class AIAgent {
     return allApis;
   }
 
+  // Splits a large file list into fixed-size batches for model processing.
   private chunkFiles(files: string[], size: number): string[][] {
     const chunks: string[][] = [];
     for (let i = 0; i < files.length; i += size) {
@@ -252,6 +259,7 @@ class AIAgent {
     return chunks;
   }
 
+  // Deletes the temporary repository directory created for the current session.
   private cleanup() {
     if (fs.existsSync(this.repoPath)) {
       fs.rmSync(this.repoPath, { recursive: true, force: true });
