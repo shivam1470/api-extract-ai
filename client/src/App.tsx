@@ -79,7 +79,7 @@ const App: React.FC = () => {
       setExtractionCompleted(true);
       setError((prev) => {
         if (prev) return prev;
-        return 'Connection lost (timeout, rate limit, or network). If you hit API limits, wait or add a key; on Vercel, long runs may need a higher function duration.';
+        return 'Connection lost (timeout, rate limit, or network). If you hit API limits, wait or add a key.';
       });
       setLogs((prev) => {
         if (prev.some((l) => l.startsWith('ERROR:'))) return prev;
