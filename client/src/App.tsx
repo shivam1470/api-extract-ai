@@ -29,12 +29,14 @@ const App: React.FC = () => {
   const [extractionCompleted, setExtractionCompleted] = useState(false);
   const terminalRef = useRef<HTMLDivElement>(null);
 
+  // Keeps the log panel pinned to the latest streamed message.
   useEffect(() => {
     if (terminalRef.current) {
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
   }, [logs]);
 
+  // Starts one extraction run and wires SSE events into the UI state model.
   const handleExtract = () => {
     setIsExtracting(true);
     setExtractionCompleted(false);
@@ -187,9 +189,11 @@ const App: React.FC = () => {
   );
 };
 
+// Renders one extracted endpoint and lets the user expand its schemas.
 const ApiCard: React.FC<{ api: ApiEndpoint }> = ({ api }) => {
   const [isOpen, setIsOpen] = useState(false);
 
+  // Maps HTTP verbs to the CSS badge variant used in the results list.
   const getMethodClass = (method: string) => {
     const m = method?.toUpperCase() || 'GET';
     if (m === 'GET') return 'method-get';

@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { AIAgent } from '../agent.js';
 
-// Vercel Node runtime handler for `/api/extract` (SSE).
+// Implements the serverless extraction endpoint used by Vercel deployments.
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   const host = (req.headers.host ?? 'localhost') as string;
   const requestUrl = new URL(req.url ?? '', `http://${host}`);
@@ -9,6 +9,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const modelId = requestUrl.searchParams.get('model') ?? 'gemini-3-flash-preview';
   const customApiKey = requestUrl.searchParams.get('apiKey') ?? undefined;
 
+  // Writes one structured progress/result/error event into the SSE response stream.
   const writeSse = (payload: Record<string, unknown>) => {
     if (res.writableEnded) return;
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -42,4 +43,3 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
   }
 }
-
