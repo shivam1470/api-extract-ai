@@ -41,29 +41,31 @@ class AIAgent {
 
   // Orchestrates one extraction session from repository download through final API list.
   async run(githubUrl: string, onLog: (msg: string) => void, modelId: string = "gemini-3-flash-preview", customApiKey?: string) {
-    const apiKey = customApiKey || DEFAULT_API_KEY;
-    
-    if (!apiKey) {
-      onLog("Error: API Key is not set. Please provide one for advanced models or set GOOGLE_API_KEY in .env.");
-      throw new Error("API Key is not set.");
+    try {
+      const apiKey = customApiKey || DEFAULT_API_KEY;
+      
+      if (!apiKey) {
+        onLog("Error: API Key is not set. Please provide one for advanced models or set GOOGLE_API_KEY in .env.");
+        throw new Error("API Key is not set.");
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+
+      onLog(`Cloning repository: ${githubUrl}...`);
+      await this.cloneRepo(githubUrl);
+
+      onLog("Scanning files...");
+      const files = this.scanFiles(this.repoPath);
+      onLog(`Found ${files.length} relevant files.`);
+
+      onLog(`Analyzing APIs using ${modelId}...`);
+      const apis = await this.analyzeFiles(files, onLog, ai, modelId);
+
+      onLog(`Successfully extracted ${apis.length} APIs.`);
+      return apis;
+    } finally {
+      this.cleanup();
     }
-
-    const ai = new GoogleGenAI({ apiKey });
-
-    onLog(`Cloning repository: ${githubUrl}...`);
-    await this.cloneRepo(githubUrl);
-
-    onLog("Scanning files...");
-    const files = this.scanFiles(this.repoPath);
-    onLog(`Found ${files.length} relevant files.`);
-
-    onLog(`Analyzing APIs using ${modelId}...`);
-    const apis = await this.analyzeFiles(files, onLog, ai, modelId);
-
-    onLog(`Successfully extracted ${apis.length} APIs.`);
-    
-    this.cleanup();
-    return apis;
   }
 
   // Validates a GitHub URL and extracts the owner/repository names when possible.
@@ -232,18 +234,9 @@ class AIAgent {
         const apis = JSON.parse(jsonText);
         allApis.push(...apis);
       } catch (error: any) {
-        onLog(`Error analyzing chunk ${i + 1}: ${error.message}`);
-        // Quota / rate limit: surface to client via SSE instead of silently continuing
-        const msg = String(error?.message ?? error).toLowerCase();
-        if (
-          msg.includes('429') ||
-          msg.includes('quota') ||
-          msg.includes('rate') ||
-          msg.includes('resource exhausted') ||
-          msg.includes('too many requests')
-        ) {
-          throw error;
-        }
+        const message = error instanceof Error ? error.message : String(error);
+        onLog(`Error analyzing chunk ${i + 1}: ${message}`);
+        throw new Error(`API extraction failed while analyzing chunk ${i + 1}/${chunks.length}: ${message}`);
       }
     }
 

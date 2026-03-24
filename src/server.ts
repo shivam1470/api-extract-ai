@@ -15,17 +15,34 @@ const host = '127.0.0.1';
 app.use(cors());
 app.use(express.json());
 
+interface ExtractRequestBody {
+  url?: string;
+  model?: string;
+  apiKey?: string;
+}
+
 // Serve static files from the React app
 app.use(express.static(path.join(__dirname, '../client/dist')));
 
+// Normalizes extraction input from either a JSON POST body or legacy query parameters.
+const getExtractRequest = (req: express.Request) => {
+  const body = (req.body ?? {}) as ExtractRequestBody;
+  const isPost = req.method === 'POST';
+
+  return {
+    repoUrl: isPost ? body.url ?? '' : String(req.query.url ?? ''),
+    modelId: isPost ? body.model ?? 'gemini-3-flash-preview' : String(req.query.model ?? 'gemini-3-flash-preview'),
+    customApiKey: isPost ? body.apiKey : (req.query.apiKey as string | undefined),
+  };
+};
+
 // Handles the extraction request lifecycle and streams progress/result events over SSE.
 // Supports both the public route and Vercel's internal remapped path.
-app.get(['/api/extract', '/extract'], async (req, res) => {
-  const repoUrl = req.query.url as string;
-  const modelId = (req.query.model as string) || 'gemini-3-flash-preview';
-  const customApiKey = req.query.apiKey as string;
+app.all(['/api/extract', '/extract'], async (req, res) => {
+  const { repoUrl, modelId, customApiKey } = getExtractRequest(req);
 
   console.log('API extract hit', {
+    method: req.method,
     path: req.path,
     originalUrl: req.originalUrl,
     hasRepoUrl: Boolean(repoUrl),

@@ -16,6 +16,12 @@ const MODELS = [
   { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Paid/Adv)', type: 'paid' },
 ];
 
+// Resolves the API origin for local proxy usage or a separately hosted backend in production.
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+// Builds an absolute or relative API path without leaving duplicate slashes.
+const getApiUrl = (path: string) => `${API_BASE_URL}${path}`;
+
 const App: React.FC = () => {
   const [repoUrl, setRepoUrl] = useState('');
   const [selectedModel, setSelectedModel] = useState(
@@ -36,58 +42,111 @@ const App: React.FC = () => {
     }
   }, [logs]);
 
-  // Starts one extraction run and wires SSE events into the UI state model.
-  const handleExtract = () => {
+  // Parses streamed SSE-style chunks from fetch and returns complete event payload strings.
+  const parseSseMessages = (chunk: string, carry: string) => {
+    const buffer = `${carry}${chunk}`;
+    const parts = buffer.split('\n\n');
+    const nextCarry = parts.pop() ?? '';
+    const messages = parts
+      .map((part) =>
+        part
+          .split('\n')
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trim())
+          .join('\n'),
+      )
+      .filter(Boolean);
+
+    return { messages, carry: nextCarry };
+  };
+
+  // Starts one extraction run and wires the streamed backend response into the UI state model.
+  const handleExtract = async () => {
     setIsExtracting(true);
     setExtractionCompleted(false);
     setLogs(['Starting extraction...']);
     setApis([]);
     setError(null);
 
-    const params = new URLSearchParams({
-      url: repoUrl,
-      model: selectedModel,
-      apiKey: customApiKey,
-    });
+    try {
+      const response = await fetch(getApiUrl('/api/extract'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify({
+          url: repoUrl,
+          model: selectedModel,
+          apiKey: customApiKey || undefined,
+        }),
+      });
 
-    const eventSource = new EventSource(`/api/extract?${params.toString()}`);
-
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'log') {
-        setLogs((prev) => [...prev, data.message]);
-      } else if (data.type === 'result') {
-        setApis(data.data);
-      } else if (data.type === 'error') {
-        let errorMsg = data.message;
-        if (errorMsg.includes('429') || errorMsg.toLowerCase().includes('quota') || errorMsg.toLowerCase().includes('limit')) {
-          errorMsg = "Free API limit reached or not working. Please come back tomorrow or provide a paid API key for advanced models.";
-        }
-        setError(errorMsg);
-        setLogs((prev) => [...prev, `ERROR: ${errorMsg}`]);
+      if (!response.ok || !response.body) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Request failed with status ${response.status}`);
       }
-    };
 
-    eventSource.addEventListener('close', () => {
-      eventSource.close();
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let carry = '';
+      let didReceiveTerminalEvent = false;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        const { messages, carry: nextCarry } = parseSseMessages(decoder.decode(value, { stream: true }), carry);
+        carry = nextCarry;
+
+        for (const message of messages) {
+          if (message === 'close') {
+            didReceiveTerminalEvent = true;
+            continue;
+          }
+
+          const data = JSON.parse(message);
+          if (data.type === 'log') {
+            setLogs((prev) => [...prev, data.message]);
+          } else if (data.type === 'result') {
+            setApis(data.data);
+          } else if (data.type === 'error') {
+            let errorMsg = data.message;
+            if (errorMsg.includes('429') || errorMsg.toLowerCase().includes('quota') || errorMsg.toLowerCase().includes('limit')) {
+              errorMsg = "Free API limit reached or not working. Please come back tomorrow or provide a paid API key for advanced models.";
+            }
+            setError(errorMsg);
+            setLogs((prev) => [...prev, `ERROR: ${errorMsg}`]);
+            didReceiveTerminalEvent = true;
+          }
+        }
+      }
+
+      if (!didReceiveTerminalEvent && carry.trim() && carry.includes('data:')) {
+        const { messages } = parseSseMessages('\n\n', carry);
+        for (const message of messages) {
+          if (message === 'close') continue;
+          const data = JSON.parse(message);
+          if (data.type === 'result') {
+            setApis(data.data);
+          } else if (data.type === 'error') {
+            setError(data.message);
+            setLogs((prev) => [...prev, `ERROR: ${data.message}`]);
+          }
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Connection lost (timeout, rate limit, or network). If you hit API limits, wait or add a key.';
+      setError((prev) => prev ?? message);
+      setLogs((prev) => {
+        if (prev.some((line) => line.startsWith('ERROR:'))) return prev;
+        return [...prev, `ERROR: ${message}`];
+      });
+    } finally {
       setIsExtracting(false);
       setExtractionCompleted(true);
       setLogs((prev) => [...prev, 'Extraction complete.']);
-    });
-
-    eventSource.onerror = () => {
-      eventSource.close();
-      setIsExtracting(false);
-      setExtractionCompleted(true);
-      setError((prev) => {
-        if (prev) return prev;
-        return 'Connection lost (timeout, rate limit, or network). If you hit API limits, wait or add a key.';
-      });
-      setLogs((prev) => {
-        if (prev.some((l) => l.startsWith('ERROR:'))) return prev;
-        return [...prev, 'ERROR: Connection to server ended unexpectedly.'];
-      });
-    };
+    }
   };
 
   const isPaidModel = MODELS.find(m => m.id === selectedModel)?.type === 'paid';
