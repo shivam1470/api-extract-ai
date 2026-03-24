@@ -62,4 +62,44 @@ The agent uses a chunking strategy to send source code files to the LLM. It iden
 
 ## Deployment
 
-This repo is now aligned for static frontend hosting plus a Node backend without Vercel-specific configuration. If you deploy on Netlify, configure the frontend from `client/` and deploy the backend separately if you need the extraction API.
+This repo is aligned for static frontend hosting plus a separate Node backend.
+
+### Recommended setup: Netlify + Render
+
+Use one GitHub repo and deploy the two parts separately:
+
+- Netlify for the frontend from `client/`
+- Render for the backend from the repo root
+
+### Netlify frontend
+
+- Base directory: `client`
+- Build command: `npm install && npm run build`
+- Publish directory: `dist`
+- Environment variable:
+  ```env
+  VITE_API_BASE_URL=https://your-render-service.onrender.com
+  ```
+
+### Render backend
+
+- Root directory: repository root
+- Build command: `npm install`
+- Start command:
+  ```bash
+  node --import tsx src/server.ts
+  ```
+- Environment variable:
+  ```env
+  GOOGLE_API_KEY=your_api_key_here
+  ```
+
+### Local development
+
+For local development, you can keep using the Vite proxy with no frontend API base URL set, or create `client/.env.local`:
+
+```env
+VITE_API_BASE_URL=http://127.0.0.1:3001
+```
+
+An example file is provided at `client/.env.example`.
