@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: api-extract-ai-backend
+    env: node
+    rootDir: .
+    buildCommand: npm install
+    startCommand: node --import tsx src/server.ts
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false

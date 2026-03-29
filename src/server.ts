@@ -3,6 +3,7 @@ import cors from 'cors';
 import type { ServerResponse } from 'http';
 import { AIAgent } from './agent.js';
 import * as path from 'path';
+import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -11,8 +12,24 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = Number(process.env.PORT) || 3001;
 const host = process.env.HOST || '0.0.0.0';
+const frontendOrigins = (process.env.FRONTEND_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const clientDistPath = path.join(__dirname, '../client/dist');
 
-app.use(cors());
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || frontendOrigins.length === 0 || frontendOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error('Origin not allowed by CORS'));
+    },
+  }),
+);
 app.use(express.json());
 
 interface ExtractRequestBody {
@@ -21,8 +38,10 @@ interface ExtractRequestBody {
   apiKey?: string;
 }
 
-// Serve static files from the React app
-app.use(express.static(path.join(__dirname, '../client/dist')));
+// Only serve the built frontend when it exists locally; Render backend deploys can skip client builds.
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+}
 
 // Normalizes extraction input from either a JSON POST body or legacy query parameters.
 const getExtractRequest = (req: express.Request) => {
@@ -37,8 +56,7 @@ const getExtractRequest = (req: express.Request) => {
 };
 
 // Handles the extraction request lifecycle and streams progress/result events over SSE.
-// Supports both the public route and Vercel's internal remapped path.
-app.all(['/api/extract', '/extract'], async (req, res) => {
+app.all('/api/extract', async (req, res) => {
   const { repoUrl, modelId, customApiKey } = getExtractRequest(req);
 
   console.log('API extract hit', {
@@ -47,7 +65,6 @@ app.all(['/api/extract', '/extract'], async (req, res) => {
     originalUrl: req.originalUrl,
     hasRepoUrl: Boolean(repoUrl),
     modelId,
-    onVercel: Boolean(process.env.VERCEL),
   });
 
   if (!repoUrl) {
@@ -60,7 +77,7 @@ app.all(['/api/extract', '/extract'], async (req, res) => {
     try {
       res.write(`data: ${JSON.stringify(payload)}\n\n`);
     } catch {
-      // Client disconnected or response closed (e.g. Vercel timeout)
+      // Client disconnected or response closed
     }
   };
 
@@ -102,15 +119,12 @@ app.all(['/api/extract', '/extract'], async (req, res) => {
 // match one above, send back React's index.html file.
 /*
 app.get('/:path(.*)', (req, res) => {
-  res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+  res.sendFile(path.join(clientDistPath, 'index.html'));
 });
 */
 
-// Vercel invokes the Express app as a serverless handler; do not bind a port there.
-if (!process.env.VERCEL) {
-  app.listen(port, host, () => {
-    console.log(`Server is running on http://${host}:${port}`);
-  });
-}
+app.listen(port, host, () => {
+  console.log(`Server is running on http://${host}:${port}`);
+});
 
 export default app;

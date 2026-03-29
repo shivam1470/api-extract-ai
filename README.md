@@ -62,20 +62,20 @@ The agent uses a chunking strategy to send source code files to the LLM. It iden
 
 ## Deployment
 
-This repo is aligned for static frontend hosting plus a separate Node backend.
+This repo is aligned for split deployment with a static frontend and a separate Node backend.
 
-### Recommended setup: Netlify + Render
+### Recommended setup: Vercel + Render
 
 Use one GitHub repo and deploy the two parts separately:
 
-- Netlify for the frontend from `client/`
+- Vercel for the frontend from `client/`
 - Render for the backend from the repo root
 
-### Netlify frontend
+### Vercel frontend
 
-- Base directory: `client`
+- Root directory: `client`
 - Build command: `npm install && npm run build`
-- Publish directory: `dist`
+- Output directory: `dist`
 - Environment variable:
   ```env
   VITE_API_BASE_URL=https://your-render-service.onrender.com
@@ -92,7 +92,11 @@ Use one GitHub repo and deploy the two parts separately:
 - Environment variable:
   ```env
   GOOGLE_API_KEY=your_api_key_here
+  FRONTEND_ORIGIN=https://your-vercel-app.vercel.app
   ```
+
+An example Render Blueprint file is included at `render.yaml`.
+The frontend also includes `client/vercel.json` so SPA routes resolve to `index.html`.
 
 ### Local development
 
